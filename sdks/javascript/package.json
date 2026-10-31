@@ -1,0 +1,40 @@
+{
+  "name": "socialpublishkit",
+  "version": "0.1.0",
+  "description": "Node.js SDK for the local SocialPublishKit publishing gateway",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/client.test.js"
+  },
+  "license": "MIT",
+  "author": "Foromo Daniel Soromou",
+  "homepage": "https://github.com/caporalCoder/socialpublishkit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/caporalCoder/socialpublishkit.git",
+    "directory": "sdks/javascript"
+  },
+  "keywords": [
+    "social-media",
+    "publishing",
+    "tiktok",
+    "instagram",
+    "facebook",
+    "youtube"
+  ]
+}

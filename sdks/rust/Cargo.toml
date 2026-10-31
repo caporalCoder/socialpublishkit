@@ -1,0 +1,21 @@
+[package]
+name = "socialpublishkit"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "Rust client for the local SocialPublishKit publishing gateway"
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/caporalCoder/socialpublishkit"
+authors = ["Foromo Daniel Soromou"]
+keywords = ["social-media", "publishing", "tiktok", "instagram", "facebook"]
+
+[dependencies]
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["fs"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

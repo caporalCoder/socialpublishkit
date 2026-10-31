@@ -1,0 +1,16 @@
+{
+  "app": {
+    "TIKTOK_SCOPES": "user.info.basic,video.upload"
+  },
+  "app_env": {},
+  "accounts": [
+    {
+      "id": "my-tiktok",
+      "platform": "tiktok",
+      "account_id": "",
+      "name": "My TikTok",
+      "access_token_env": "TIKTOK_ACCESS_TOKEN",
+      "scopes": ["user.info.basic", "video.upload"]
+    }
+  ]
+}

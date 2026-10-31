@@ -1,0 +1,52 @@
+name: CI
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.10', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install . build
+      - run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - run: python -m build
+  javascript:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['20', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test && npm pack --dry-run
+        working-directory: sdks/javascript
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install 1.98.0 --profile minimal --component clippy,rustfmt
+      - run: cargo +1.98.0 fmt --manifest-path sdks/rust/Cargo.toml -- --check
+      - run: cargo +1.98.0 test --manifest-path sdks/rust/Cargo.toml --locked
+      - run: cargo +1.98.0 clippy --manifest-path sdks/rust/Cargo.toml --all-targets --locked -- -D warnings
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: rustup toolchain install 1.98.0 --profile minimal
+      - run: python -m pip install .
+      - run: python tests/check_sdk_clients.py

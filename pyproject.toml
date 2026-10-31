@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "socialpublishkit"
+version = "0.1.0"
+description = "Dependency-free video publishing SDK for Facebook Pages, Instagram, TikTok, and YouTube"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Foromo Daniel Soromou"}]
+keywords = ["social-media", "publishing", "tiktok", "instagram", "facebook", "youtube"]
+
+[project.urls]
+Homepage = "https://github.com/caporalCoder/socialpublishkit"
+Repository = "https://github.com/caporalCoder/socialpublishkit"
+Issues = "https://github.com/caporalCoder/socialpublishkit/issues"
+
+[tool.setuptools]
+packages = ["socialpublishkit"]
+
+[tool.setuptools.package-data]
+socialpublishkit = ["py.typed"]
