@@ -2,8 +2,8 @@
 
 Publish MP4 videos using official APIs for Facebook **Pages**, Instagram professional accounts,
 TikTok and YouTube. The Python package works directly. Node.js and Rust call the same local Python
-gateway. See [GitHub Releases](https://github.com/caporalCoder/socialpublishkit/releases) for
-registry availability and downloadable release archives.
+gateway. Version 0.1.1 is available on PyPI, npm, and crates.io.
+[Release notes and archives](https://github.com/caporalCoder/socialpublishkit/releases/tag/v0.1.1).
 The JavaScript and Rust packages are gateway clients, not independent native platform adapters.
 
 No Buffer or other hosted publishing subscription is required. Running on your own Mac avoids
@@ -25,20 +25,20 @@ Python 3.10+. No runtime dependencies and no Manim/Claude/rendering dependencies
 
 ```sh
 python3 -m venv /tmp/socialpublishkit-env
-/tmp/socialpublishkit-env/bin/pip install /path/to/socialpublishkit
+/tmp/socialpublishkit-env/bin/pip install socialpublishkit
 ```
 
 Node.js 20+ (includes TypeScript declarations. No runtime dependencies):
 
 ```sh
-npm install /path/to/socialpublishkit/sdks/javascript
+npm install socialpublishkit
 ```
 
-Rust: add a path dependency to the consuming application's Cargo.toml:
+Rust: add the crate to your application's Cargo.toml:
 
 ```toml
 [dependencies]
-socialpublishkit = { path = "/path/to/socialpublishkit/sdks/rust" }
+socialpublishkit = "0.1.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 

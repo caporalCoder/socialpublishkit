@@ -13,12 +13,13 @@ or Algovid installation required. Bring your own developer apps, accounts and ap
 | TikTok | Draft uploads. Direct posting subject to app approval and user consent |
 | YouTube | Video uploads. Visibility and Shorts eligibility remain platform-controlled |
 
-Version **0.1.1**. See [release notes and downloads](https://github.com/caporalCoder/socialpublishkit/releases)
-for registry availability and verified package archives.
+Version **0.1.1** is available on [PyPI](https://pypi.org/project/socialpublishkit/),
+[npm](https://www.npmjs.com/package/socialpublishkit), and [crates.io](https://crates.io/crates/socialpublishkit).
+[Release notes and archives](https://github.com/caporalCoder/socialpublishkit/releases/tag/v0.1.1).
 
 ## Install
 
-Registry package name: `socialpublishkit` in all three ecosystems. Once the release is available:
+Package name: `socialpublishkit` in all three ecosystems:
 
 ```sh
 pip install socialpublishkit
@@ -59,7 +60,7 @@ client = GatewayClient(os.environ["SOCIALPUBLISHKIT_TOKEN"])
 print(client.accounts())
 ```
 
-JavaScript client (install with `npm install /path/to/socialpublishkit/sdks/javascript`):
+JavaScript client:
 
 ```js
 import { SocialClient } from 'socialpublishkit';
@@ -70,7 +71,7 @@ console.log(await client.accounts());
 Rust dependency:
 
 ```toml
-socialpublishkit = { git = "https://github.com/caporalCoder/socialpublishkit.git", tag = "v0.1.1" }
+socialpublishkit = "0.1.1"
 ```
 
 [Publishing examples in all three languages →](https://github.com/caporalCoder/socialpublishkit/blob/main/docs/usage.md)
