@@ -17,17 +17,54 @@ import tempfile
 import threading
 
 from .client import Publisher
-from .models import Account, PublishingError, TikTokOptions, ValidationError, VideoPost
+from .models import Account, PublishingError, TikTokOptions, YouTubeOptions, ValidationError, VideoPost
 
 MAX_VIDEO_BYTES = 32 * 1024 * 1024
 MAX_BODY_BYTES = MAX_VIDEO_BYTES * 4 // 3 + 65536
 KEY = re.compile(r"[A-Za-z0-9_-]{8,128}\Z")
 
 
+class _BoundedHTTPServer(ThreadingHTTPServer):
+    """Bound simultaneous connections, including clients stalled before authentication."""
+    daemon_threads = True
+
+    def __init__(self, *args, **kwargs):
+        self._slots = threading.BoundedSemaphore(8)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        if not self._slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+    def handle_error(self, request, client_address):
+        pass  # socket failures must not log account data or upload contents
+
+
 class Gateway:
     def __init__(self, publisher: Publisher, accounts: dict[str, Account], *, token: str, state_dir: str | Path):
-        if len(token) < 32 or not token.isascii() or any(c.isspace() for c in token):
+        if not isinstance(token, str) or len(token) < 32 or any(not 33 <= ord(c) <= 126 for c in token):
             raise ValueError("Use a random ASCII gateway token of at least 32 characters.")
+        identities = set()
+        for key, account in accounts.items():
+            Publisher._credentials(account)
+            if not isinstance(key, str) or not key or not account.account_id.strip():
+                raise ValidationError("Gateway accounts require a nonempty alias and provider account ID.")
+            identity = (account.platform, account.account_id)
+            if identity in identities:
+                raise ValidationError("Configure each destination once; duplicate aliases can race token refresh.")
+            identities.add(identity)
         self.publisher, self.accounts, self._token = publisher, dict(accounts), token
         self.state_dir = Path(state_dir)
         self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -52,6 +89,7 @@ class Gateway:
         self._account_locks = {key: threading.Lock() for key in accounts}
         self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="social-publish")
         self._pending = 0
+        self._closed = False
 
     @contextmanager
     def _db(self):
@@ -63,6 +101,10 @@ class Gateway:
             db.close()
 
     def close(self):
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
         self._pool.shutdown(wait=True)
         self._process_lock.close()
 
@@ -72,9 +114,9 @@ class Gateway:
         return json.loads(row[0]) if row else None
 
     def submit(self, key: str, body: dict) -> tuple[int, dict]:
-        if not KEY.fullmatch(key):
+        if not isinstance(key, str) or not KEY.fullmatch(key):
             raise ValidationError("Idempotency-Key must contain 8-128 letters, digits, underscores or hyphens.")
-        if not isinstance(body, dict) or set(body) - {"account", "video_base64", "caption", "title", "tags", "tiktok"}:
+        if not isinstance(body, dict) or set(body) - {"account", "video_base64", "caption", "title", "tags", "tiktok", "youtube"}:
             raise ValidationError("Unexpected publication fields.")
         account_key = body.get("account")
         if not isinstance(account_key, str) or account_key not in self.accounts:
@@ -95,18 +137,20 @@ class Gateway:
                 raise ValueError()
         except (KeyError, ValueError):
             raise ValidationError("Provide a nonempty base64 MP4 up to 32 MiB.") from None
-        if body.get("tiktok") is not None:
-            try:
-                options = TikTokOptions(**body["tiktok"])
-            except (TypeError, ValueError):
-                raise ValidationError("Invalid TikTok options.") from None
-        else:
-            options = None
+        options = {}
+        for name, cls in (("tiktok", TikTokOptions), ("youtube", YouTubeOptions)):
+            if body.get(name) is not None:
+                try:
+                    options[name] = cls(**body[name])
+                except (TypeError, ValueError):
+                    raise ValidationError(f"Invalid {name} options.") from None
         # Include destination identity so reconnection cannot redirect an old request key.
         account = self.accounts[account_key]
         digest = hashlib.sha256(json.dumps([body, account.platform, account.account_id],
                                             sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         with self._lock, self._db() as db:
+            if self._closed:
+                return 503, {"error": "Gateway is shutting down. Query the same publication ID before retrying."}
             row = db.execute("SELECT digest, body FROM jobs WHERE id=?", (key,)).fetchone()
             if row:
                 if row[0] != digest:
@@ -132,7 +176,7 @@ class Gateway:
                     os.chmod(path, 0o600)
                     result = self.publisher.publish(self.accounts[job["account"]],
                         VideoPost(path, body["caption"], body.get("title", ""), tuple(body.get("tags", []))),
-                        tiktok=options)
+                        **options)
             job.update(state="completed", result=asdict(result))
         except ValidationError:
             job.update(state="failed", error="Request rejected before upload. Check caption, options, token expiry and app configuration.")
@@ -141,9 +185,12 @@ class Gateway:
         except Exception:
             job.update(state="unknown", error="Unconfirmed outcome. Check the destination before retrying.")
         finally:
-            with self._lock, self._db() as db:
-                db.execute("UPDATE jobs SET body=? WHERE id=?", (json.dumps(job), job["id"]))
-                self._pending -= 1
+            with self._lock:
+                try:
+                    with self._db() as db:
+                        db.execute("UPDATE jobs SET body=? WHERE id=?", (json.dumps(job), job["id"]))
+                finally:
+                    self._pending -= 1
 
     def server(self, port: int = 8787) -> ThreadingHTTPServer:
         gateway = self
@@ -206,4 +253,4 @@ class Gateway:
                 except (ValidationError, ValueError, TypeError):
                     self._send(400, {"error": "Invalid publication request. Check fields, video and idempotency key."})
 
-        return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+        return _BoundedHTTPServer(("127.0.0.1", port), Handler)

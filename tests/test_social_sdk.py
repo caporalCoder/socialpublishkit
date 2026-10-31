@@ -1,8 +1,5 @@
 """SDK contract tests: all provider calls mocked, no real publication possible."""
 
-import base64
-from dataclasses import asdict
-from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -27,7 +24,7 @@ class Response:
         self.headers, self.status = headers or {}, status
     def __enter__(self): return self
     def __exit__(self, *_): pass
-    def read(self): return self.body
+    def read(self, size=-1): return self.body if size < 0 else self.body[:size]
 
 
 class SDKTests(unittest.TestCase):
@@ -47,7 +44,7 @@ class SDKTests(unittest.TestCase):
             result = queue.pop(0)
             if isinstance(result, Exception): raise result
             return result if isinstance(result, Response) else Response(result)
-        mock = patch.object(providers.urllib.request, "urlopen", call)
+        mock = patch.object(providers, "_open", call)
         return mock, calls
 
     def test_imports_do_not_require_studio_dependencies(self):

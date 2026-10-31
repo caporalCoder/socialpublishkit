@@ -120,6 +120,26 @@ pub struct PublishRequest {
     pub title: String,
     pub tags: Vec<String>,
     pub tiktok: Option<TikTokOptions>,
+    pub youtube: Option<YouTubeOptions>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum YouTubePrivacy {
+    #[default]
+    Private,
+    Unlisted,
+    Public,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct YouTubeOptions {
+    pub privacy: YouTubePrivacy,
+    pub made_for_kids: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
 }
 
 // Deliberately no Debug: never print the bearer token.
@@ -251,6 +271,10 @@ impl SocialClient {
             }
             body["tiktok"] = serde_json::to_value(options)
                 .map_err(|_| Error::InvalidInput("Invalid TikTok options"))?;
+        }
+        if let Some(options) = &post.youtube {
+            body["youtube"] = serde_json::to_value(options)
+                .map_err(|_| Error::InvalidInput("Invalid YouTube options"))?;
         }
         self.request("/v1/publications", Some(body), Some(&post.publication_id))
             .await

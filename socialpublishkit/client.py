@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 from . import providers
 from .models import (Account, Platform, PublishingError, PublishResult, PublishStatus,
-                     TikTokOptions, ValidationError, VideoPost)
+                     TikTokOptions, YouTubeOptions, ValidationError, VideoPost)
 
 _PROVIDERS = {
     Platform.FACEBOOK_PAGE: providers.Facebook,
@@ -23,7 +23,7 @@ _MODES = {"draft": "brouillon", "private": "prive", "public": "public"}
 
 
 class Publisher:
-    """One client for authenticated accounts; publishing never retries automatically.
+    """Publish with authenticated accounts. Requests are not retried automatically.
 
     config uses the documented provider environment variable names, but is explicit:
     no ambient .env files or environment variables are read by this client.
@@ -82,14 +82,25 @@ class Publisher:
 
     @staticmethod
     def _credentials(account: Account) -> dict:
+        if not isinstance(account, Account):
+            raise ValidationError("Provide an Account instance.")
         if not isinstance(account.access_token, str) or not account.access_token.strip():
             raise ValidationError("An access token is required.")
-        platform = Platform(account.platform)
+        try:
+            platform = Platform(account.platform)
+        except (TypeError, ValueError):
+            raise ValidationError("Unsupported account platform.") from None
+        if not isinstance(account.name, str) or not isinstance(account.account_id, str):
+            raise ValidationError("Account name and ID must be strings.")
+        if account.refresh_token is not None and (not isinstance(account.refresh_token, str) or not account.refresh_token.strip()):
+            raise ValidationError("refresh_token must be a nonempty string or None.")
+        if not isinstance(account.scopes, (tuple, list)) or any(not isinstance(s, str) for s in account.scopes):
+            raise ValidationError("scopes must contain strings.")
         if platform in (Platform.FACEBOOK_PAGE, Platform.INSTAGRAM) and not account.account_id:
             raise ValidationError("An explicit Facebook Page or Instagram account ID is required.")
         if platform in (Platform.FACEBOOK_PAGE, Platform.INSTAGRAM) and not str(account.account_id).isdigit():
             raise ValidationError("Facebook Page and Instagram account IDs must be numeric.")
-        if account.expires_at is not None and not math.isfinite(account.expires_at):
+        if account.expires_at is not None and (type(account.expires_at) not in (int, float) or not math.isfinite(account.expires_at)):
             raise ValidationError("expires_at must be a finite Unix timestamp.")
         return {"jeton": account.access_token, "nom": account.name,
                 "renouvellement": account.refresh_token,
@@ -98,13 +109,15 @@ class Publisher:
 
     def _persist_refresh(self, account: Account, data: dict):
         changed = (account.access_token != data["jeton"] or
-                   account.refresh_token != data.get("renouvellement"))
+                   account.refresh_token != data.get("renouvellement") or
+                   (account.expires_at if account.expires_at is not None else float("inf")) != data.get("expire", float("inf")) or
+                   tuple(filter(None, data.get("scope", "").split(","))) != account.scopes)
         if changed:
             account.access_token = data["jeton"]
             account.refresh_token = data.get("renouvellement")
-            account.expires_at = data.get("expire")
-            if data.get("scope"):
-                account.scopes = tuple(data["scope"].split(","))
+            expiry = data.get("expire")
+            account.expires_at = expiry if expiry is not None and math.isfinite(expiry) else None
+            account.scopes = tuple(filter(None, data.get("scope", "").split(",")))
             if self._on_account_update:
                 self._on_account_update(account)
 
@@ -127,20 +140,27 @@ class Publisher:
             raise PublishingError(Platform.TIKTOK, outcome_unknown=False) from None
 
     def publish(self, account: Account, post: VideoPost, *,
-                tiktok: TikTokOptions | None = None) -> PublishResult:
+                tiktok: TikTokOptions | None = None, youtube: YouTubeOptions | None = None) -> PublishResult:
         """Publish exactly once after the host obtains the user's consent.
 
-        A draft delivery is not a public post; a YouTube upload is not proof of
+        A draft is not a public post. A YouTube upload does not confirm
         processing or public visibility. This method does not schedule or fan out.
         """
-        provider = self._provider(account.platform)
-        platform = Platform(account.platform)
         data = self._credentials(account)
+        provider = self._provider(account.platform)
+        provider.on_refresh = lambda refreshed: self._persist_refresh(account, refreshed)
+        platform = Platform(account.platform)
+        if not isinstance(post, VideoPost):
+            raise ValidationError("Provide a VideoPost instance.")
         video = Path(post.video).expanduser().resolve()
         if not video.is_file() or video.suffix.lower() != ".mp4" or video.stat().st_size == 0:
             raise ValidationError("Provide an existing, nonempty MP4 video.")
         if not isinstance(post.caption, str):
             raise ValidationError("caption must be a string.")
+        if not isinstance(post.title, str):
+            raise ValidationError("title must be a string.")
+        if not isinstance(post.tags, (tuple, list)) or any(not isinstance(t, str) for t in post.tags):
+            raise ValidationError("tags must contain strings.")
         if platform == Platform.YOUTUBE and (not post.title.strip() or len(post.title) > 100):
             raise ValidationError("YouTube requires a title between 1 and 100 characters.")
         if platform == Platform.INSTAGRAM and len(post.caption) > 2200:
@@ -151,10 +171,25 @@ class Publisher:
             if not data["renouvellement"] or not provider.configure():
                 raise ValidationError("Token renewal requires refresh token and app configuration.")
         options = {}
+        if youtube is not None and platform != Platform.YOUTUBE:
+            raise ValidationError("YouTube options require a YouTube account.")
+        if platform == Platform.YOUTUBE:
+            youtube = youtube or YouTubeOptions()
+            if not isinstance(youtube, YouTubeOptions):
+                raise ValidationError("Provide YouTubeOptions or None.")
+            if youtube.privacy not in ("private", "unlisted", "public") or type(youtube.made_for_kids) is not bool:
+                raise ValidationError("Provide valid YouTube privacy and made_for_kids choices.")
+            if youtube.category_id is not None and (not isinstance(youtube.category_id, str) or not youtube.category_id.isdigit()):
+                raise ValidationError("YouTube category_id must be a numeric string or None.")
+            if youtube.language is not None and (not isinstance(youtube.language, str) or not youtube.language.strip()):
+                raise ValidationError("YouTube language must be a nonempty language tag or None.")
+            options["youtube"] = asdict(youtube)
         if tiktok is not None and platform != Platform.TIKTOK:
             raise ValidationError("TikTok options can only be used with a TikTok account.")
         if platform == Platform.TIKTOK:
             tiktok = tiktok or TikTokOptions()
+            if not isinstance(tiktok, TikTokOptions):
+                raise ValidationError("Provide TikTokOptions or None.")
             if not isinstance(tiktok.mode, str) or tiktok.mode not in _MODES:
                 raise ValidationError("TikTok mode must be draft, private, or public.")
             mode = _MODES[tiktok.mode]
@@ -180,12 +215,15 @@ class Publisher:
         try:
             try:
                 result = provider.publier(data, str(video), text, options)
+                status = PublishStatus(result["status"])
+                post_id = result["id"]
+                if not isinstance(post_id, str) or not post_id:
+                    raise ValueError("Provider omitted the publication ID")
             finally:
                 self._persist_refresh(account, data)
         except Exception:
             # Even a polling failure can follow a successful publication. Never auto-retry.
             raise PublishingError(platform, outcome_unknown=True) from None
-        status = PublishStatus(result["status"])
         note = ("Draft delivered to the TikTok inbox. Complete the caption and publish in TikTok."
                 if status == PublishStatus.DRAFT_DELIVERED else result.get("note", ""))
-        return PublishResult(platform, status, result["id"], result.get("url", ""), note)
+        return PublishResult(platform, status, post_id, result.get("url", ""), note)

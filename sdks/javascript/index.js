@@ -56,7 +56,7 @@ export class SocialClient {
     return this.#request(`/v1/publications/${publicationId}`);
   }
 
-  async publish({ publicationId, account, video, caption, title = '', tags = [], tiktok }) {
+  async publish({ publicationId, account, video, caption, title = '', tags = [], tiktok, youtube }) {
     checkKey(publicationId);
     const info = await stat(video);
     if (extname(video).toLowerCase() !== '.mp4' || !info.isFile() || info.size <= 0 || info.size > 32 * 1024 * 1024) {
@@ -64,6 +64,7 @@ export class SocialClient {
     }
     const body = { account, video_base64: (await readFile(video)).toString('base64'), caption, title, tags };
     if (tiktok !== undefined) body.tiktok = tiktok;
+    if (youtube !== undefined) body.youtube = youtube;
     return this.#request('/v1/publications', body, publicationId);
   }
 }

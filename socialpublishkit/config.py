@@ -12,7 +12,7 @@ from . import Account, Platform, Publisher
 
 
 def load_config(path: Path, state_dir: Path):
-    """Return publisher/accounts; cache rotated credentials in a private local file.
+    """Load accounts and persist rotated credentials in a private local file.
 
     A changed source environment token or account configuration invalidates its cached
     token. No environment values are ever written to logs or included in error messages.
@@ -65,7 +65,11 @@ def load_config(path: Path, state_dir: Path):
         cached = cache.get(key, {})
         if isinstance(cached, dict) and cached.get("source_fingerprint") == fingerprint:
             saved = cached["account"]
-            source = Account(**(saved | {"platform": Platform(saved["platform"]), "scopes": tuple(saved["scopes"])}))
+            restored = Account(**(saved | {"platform": Platform(saved["platform"]), "scopes": tuple(saved["scopes"])}))
+            Publisher._credentials(restored)
+            if (restored.platform, restored.account_id) != (source.platform, source.account_id):
+                raise ValueError("Cached credentials do not match the configured destination.")
+            source = restored
         accounts[key] = source
     lock = threading.Lock()
 

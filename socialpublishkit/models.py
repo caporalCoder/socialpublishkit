@@ -39,7 +39,7 @@ class VideoPost:
 
 @dataclass(frozen=True)
 class TikTokOptions:
-    # Direct publication is opt-in; application approval is still required.
+    # Direct posting requires app approval and explicit user consent.
     mode: str = "draft"  # draft, private, public
     duration_seconds: float | None = None
     disable_comment: bool = True
@@ -48,6 +48,14 @@ class TikTokOptions:
     paid_partnership: bool = False
     own_brand: bool = False
     ai_generated: bool | None = None  # explicit disclosure only, never inferred
+
+
+@dataclass(frozen=True)
+class YouTubeOptions:
+    privacy: str = "private"  # private, unlisted, public
+    made_for_kids: bool = False
+    category_id: str | None = None
+    language: str | None = None
 
 
 @dataclass(frozen=True)

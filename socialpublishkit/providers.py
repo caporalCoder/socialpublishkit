@@ -36,17 +36,33 @@ class ErreurReseau(RuntimeError):
         self.passagere = passagere
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_):
+        return None
+
+
+# Never forward OAuth headers, codes, tokens or video bytes through redirects.
+_open = urllib.request.build_opener(_NoRedirect()).open
+
+
 def _http(methode: str, url: str, corps: bytes | None = None, entetes: dict | None = None,
           delai: float = 300) -> tuple[int, dict, bytes]:
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https" or not parts.hostname or parts.username or parts.password or parts.fragment:
+        raise ErreurReseau("Provider endpoints must use HTTPS without embedded credentials or fragments")
     requete = urllib.request.Request(url, data=corps, method=methode, headers=entetes or {})
     try:
-        with urllib.request.urlopen(requete, timeout=delai) as r:
-            return r.status, dict(r.headers), r.read()
+        with _open(requete, timeout=delai) as r:
+            body = r.read(8 * 1024 * 1024 + 1)
+            if len(body) > 8 * 1024 * 1024:
+                raise ErreurReseau("Provider response exceeds the supported size")
+            return r.status, dict(r.headers), body
     except urllib.error.HTTPError as e:
-        detail = e.read().decode("utf-8", "replace")[:400]
-        raise ErreurReseau(f"erreur {e.code} : {detail}", e.code == 429 or e.code >= 500) from e
-    except (urllib.error.URLError, OSError) as e:
-        raise ErreurReseau(f"connexion impossible : {e}", True) from e
+        code = e.code
+        e.close()
+        raise ErreurReseau(f"Provider HTTP error {code}", code == 429 or code >= 500) from None
+    except (urllib.error.URLError, OSError):
+        raise ErreurReseau("Provider connection failed", True) from None
 
 
 def _json(methode: str, url: str, corps: bytes | None = None, entetes: dict | None = None) -> dict:
@@ -66,6 +82,7 @@ class Reseau:
     def __init__(self, racine: str = "", *, config: dict | None = None, redirect_uri: str | None = None):
         self.racine = racine
         self.config = dict(config) if config is not None else None
+        self.on_refresh = None
         if redirect_uri is not None:
             self.redirection = redirect_uri
 
@@ -116,14 +133,22 @@ class YouTube(Reseau):
                                            "client_id": self.valeur("GOOGLE_CLIENT_ID"),
                                            "client_secret": self.valeur("GOOGLE_CLIENT_SECRET")})
             compte |= {"jeton": t["access_token"], "expire": time.time() + t.get("expires_in", 3600)}
+            if self.on_refresh:
+                self.on_refresh(compte)
         return compte["jeton"]
 
     def publier(self, compte: dict, video: str, texte: dict, options: dict) -> dict:
         taille = os.path.getsize(video)
         jeton = self._jeton(compte)
-        fiche = {"snippet": {"title": texte["titre"], "description": texte["description"], "tags": texte["tags"],
-                             "categoryId": "27", "defaultLanguage": "fr"},
-                 "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}}
+        settings = options.get("youtube", {})
+        snippet = {"title": texte["titre"], "description": texte["description"], "tags": texte["tags"]}
+        if settings.get("category_id"):
+            snippet["categoryId"] = settings["category_id"]
+        if settings.get("language"):
+            snippet["defaultLanguage"] = settings["language"]
+        fiche = {"snippet": snippet,
+                 "status": {"privacyStatus": settings.get("privacy", "private"),
+                            "selfDeclaredMadeForKids": settings.get("made_for_kids", False)}}
         _, entetes, _ = _http("POST", "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
                               json.dumps(fiche).encode(),
                               {"Authorization": f"Bearer {jeton}", "Content-Type": "application/json; charset=UTF-8",
@@ -187,6 +212,8 @@ class TikTok(Reseau):
             raise ErreurReseau("Ce mode TikTok n'est pas activé pour cette application. Utilise le brouillon.")
         if time.time() > compte["expire"] - MARGE:
             compte |= self._jetons({"grant_type": "refresh_token", "refresh_token": compte["renouvellement"]})
+            if self.on_refresh:
+                self.on_refresh(compte)
         taille = os.path.getsize(video)
         if not taille:
             raise ErreurReseau("La vidéo est vide.")

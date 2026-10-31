@@ -1,6 +1,6 @@
 {
   "name": "socialpublishkit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Node.js SDK for the local SocialPublishKit publishing gateway",
   "type": "module",
   "engines": {
@@ -19,7 +19,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test test/client.test.js"
+    "test": "node --test test/client.test.js",
+    "typecheck": "tsc --strict --noEmit --module nodenext --target es2022 test/types.mts"
   },
   "license": "MIT",
   "author": "Foromo Daniel Soromou",
@@ -36,5 +37,13 @@
     "instagram",
     "facebook",
     "youtube"
-  ]
+  ],
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

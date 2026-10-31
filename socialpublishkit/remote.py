@@ -29,7 +29,7 @@ class GatewayClient:
                 or parts.query or parts.fragment or parts.path not in ("", "/")
                 or (parts.scheme == "http" and parts.hostname not in ("127.0.0.1", "localhost", "::1"))):
             raise ValidationError("Use HTTPS or a loopback HTTP gateway URL without credentials/path/query.")
-        if not token or not token.isascii() or any(c.isspace() for c in token):
+        if not isinstance(token, str) or not token or any(not 33 <= ord(c) <= 126 for c in token):
             raise ValidationError("A nonempty ASCII bearer token without whitespace is required.")
         self._token, self.base_url = token, base_url.rstrip("/")
 
@@ -61,14 +61,15 @@ class GatewayClient:
         self._key(publication_id)
         return self._request("/v1/publications/" + publication_id)
 
-    def publish(self, *, publication_id, account, video, caption, title="", tags=(), tiktok=None):
+    def publish(self, *, publication_id, account, video, caption, title="", tags=(), tiktok=None, youtube=None):
         self._key(publication_id)
         path = Path(video)
         if path.suffix.lower() != ".mp4" or not 0 < path.stat().st_size <= 32 * 1024 * 1024:
             raise ValidationError("Provide a nonempty MP4 up to 32 MiB.")
         body = {"account": account, "video_base64": base64.b64encode(path.read_bytes()).decode(),
                 "caption": caption, "title": title, "tags": list(tags)}
-        if tiktok is not None:
-            from dataclasses import asdict
-            body["tiktok"] = asdict(tiktok)
+        from dataclasses import asdict
+        for key, options in (("tiktok", tiktok), ("youtube", youtube)):
+            if options is not None:
+                body[key] = asdict(options)
         return self._request("/v1/publications", body, publication_id)

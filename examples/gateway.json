@@ -7,7 +7,7 @@
     {
       "id": "my-tiktok",
       "platform": "tiktok",
-      "account_id": "",
+      "account_id": "REPLACE_WITH_YOUR_TIKTOK_OPEN_ID",
       "name": "My TikTok",
       "access_token_env": "TIKTOK_ACCESS_TOKEN",
       "scopes": ["user.info.basic", "video.upload"]

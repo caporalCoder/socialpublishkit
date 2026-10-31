@@ -14,6 +14,12 @@ export interface PublishResult {
   platform: Platform; status: 'draft_delivered' | 'uploaded' | 'published';
   post_id: string; url: string; note: string;
 }
+export interface YouTubeOptions {
+  privacy?: 'private' | 'unlisted' | 'public';
+  made_for_kids?: boolean;
+  category_id?: string | null;
+  language?: string | null;
+}
 export interface Publication {
   id: string; account: string; state: 'processing' | 'completed' | 'failed' | 'unknown';
   result: PublishResult | null; error: string | null;
@@ -25,6 +31,6 @@ export class SocialClient {
   publication(publicationId: string): Promise<Publication>;
   publish(options: {
     publicationId: string; account: string; video: string; caption: string;
-    title?: string; tags?: string[]; tiktok?: TikTokOptions;
+    title?: string; tags?: string[]; tiktok?: TikTokOptions; youtube?: YouTubeOptions;
   }): Promise<Publication>;
 }
